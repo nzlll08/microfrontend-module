@@ -3,7 +3,7 @@
 A scalable micro frontend module built with React, TypeScript, Vite, and Module Federation.
 
 ## Features
-- Authentication module UI
+- module UI
 - React + TypeScript architecture
 - Vite-based fast setup
 - Module Federation ready
