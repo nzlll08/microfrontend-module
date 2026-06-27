@@ -1,0 +1,91 @@
+trigger:
+- main
+- release/*
+- develop
+
+pool:
+  name: default
+  demands:
+    - Agent.OS -equals Windows_NT
+
+# define variables to use during the build
+variables:
+  projectFolder: ''
+  buildOutputFolder: '/dist'
+
+stages:
+- stage: Build
+
+  jobs:
+  - job: 'BuildCode'
+    # define the steps of the build
+    steps:
+      
+    - script: |
+        npm install
+      displayName: 'npm install'
+
+    - script: |
+        set NODE_OPTIONS=--max-old-space-size=4096
+        npm run build
+      displayName: 'npm run build'  
+
+    ## Copy the client to the staging directory
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: '$(System.DefaultWorkingDirectory)/$(buildOutputFolder)' 
+        contents: '**/*' 
+        targetFolder: '$(Build.ArtifactStagingDirectory)'
+        cleanTargetFolder: true
+
+    ## Archive the files into a zip file for publishing
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: $(Build.ArtifactStagingDirectory)
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        includeRootFolder: false
+
+    ## Publish the zip file
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        ArtifactName: 'FModules'
+
+- stage: DevDeploy
+  dependsOn: Build
+  jobs: 
+  - deployment: 
+    displayName: Dev Deploy
+    environment: 
+      name: 'kscoapp'
+      resourceName: TESNA-APP
+      resourceType: virtualMachine
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            
+            - script: echo running the dev deployment
+              displayName: Running dev deployment
+            
+            - download: current
+              artifact: 'FModules'
+
+            # Clean destination (keep web.config)
+            - task: PowerShell@2
+              displayName: 'Clean destination folder'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  Get-ChildItem -Path "D:\Web\Modules\FModules" -Exclude "web.config" | Remove-Item -Recurse -Force  
+            
+            - task: ExtractFiles@1
+              inputs:
+                archiveFilePatterns: '$(Pipeline.Workspace)/FModules/$(Build.BuildId).zip'
+                destinationFolder: 'D:\Web\Modules\FModules\'
+                cleanDestinationFolder: false
+                overwriteExistingFiles: true
+            
+            - script: RMDIR "$(Pipeline.Workspace)/FModules/" /S /Q
+              displayName: Delete FModules folder           
